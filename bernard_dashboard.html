@@ -37,19 +37,12 @@
   @media(max-width:700px){.stats-grid{grid-template-columns:repeat(2,1fr)}}
   .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; position:relative; overflow:hidden; transition:all 0.2s; cursor:pointer; }
   .stat-card:hover { transform:translateY(-3px); background:var(--surface2); }
-  .stat-card.active-filter { border: 1px solid white; box-shadow: 0 0 15px rgba(255,255,255,0.1); }
+  .stat-card.active-filter { border: 1px solid white; box-shadow: 0 0 15px rgba(240,180,41,0.1); }
   .stat-card::after { content:''; position:absolute; bottom:0; left:0; right:0; height:2px; }
   .stat-card.closed::after{background:var(--closed)} .stat-card.open::after{background:var(--open)} .stat-card.inprogress::after{background:var(--inprogress)} .stat-card.waiting::after{background:var(--waiting)}
   .stat-label { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-bottom:12px; }
   .stat-value { font-family:'Syne',sans-serif; font-size:42px; font-weight:800; line-height:1; }
-  .stat-card.closed .stat-value{color:var(--closed)} .stat-card.open .stat-value{color:var(--open)} .stat-card.inprogress .stat-value{color:var(--inprogress)} .stat-card.waiting .stat-value{color:var(--waiting)}
 
-  .chart-section { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom:28px; }
-  .bar-row { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
-  .bar-label { font-size:11px; color:var(--muted); width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .bar-track { flex:1; height:8px; background:var(--surface2); border-radius:100px; overflow:hidden; }
-  .bar-fill { height:100%; border-radius:100px; background:var(--accent3); transition:width .8s ease; }
-  
   .table-section { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
   table { width:100%; border-collapse:collapse; font-size:12px; }
   th { padding:12px 16px; text-align:left; font-size:10px; text-transform:uppercase; color:var(--muted); background:var(--surface2); }
@@ -61,6 +54,7 @@
   .badge-inprogress{background:#f0b42915;color:var(--inprogress);border:1px solid #f0b42930}
   .badge-waiting{background:#ff6b3515;color:var(--waiting);border:1px solid #ff6b3530}
   
+  .time-text { font-size:11px; font-weight:700; color:var(--accent3); }
   .refresh-btn { background:var(--accent); border:none; color:#000; padding:10px 20px; border-radius:8px; cursor:pointer; font-family:'Syne',sans-serif; font-size:12px; font-weight:700; }
   .spinning span { animation:spin 0.8s linear infinite; display:inline-block; }
 </style>
@@ -91,7 +85,7 @@
 
     <div class="stats-grid">
       <div class="stat-card closed" onclick="filterTable('Closed', this)">
-        <div class="stat-label">Closed</div>
+        <div class="stat-label">Resolved</div>
         <div class="stat-value" id="stat-closed">0</div>
       </div>
       <div class="stat-card open" onclick="filterTable('New', this)">
@@ -99,18 +93,13 @@
         <div class="stat-value" id="stat-open">0</div>
       </div>
       <div class="stat-card inprogress" onclick="filterTable('In Progress', this)">
-        <div class="stat-label">In Progress</div>
+        <div class="stat-label">Working</div>
         <div class="stat-value" id="stat-inprogress">0</div>
       </div>
       <div class="stat-card waiting" onclick="filterTable('Waiting', this)">
-        <div class="stat-label">Waiting Parts</div>
+        <div class="stat-label">Pending</div>
         <div class="stat-value" id="stat-waiting">0</div>
       </div>
-    </div>
-
-    <div class="chart-section">
-      <div class="section-title" style="color:var(--muted); font-size:10px; letter-spacing:2px; text-transform:uppercase; margin-bottom:15px;">Clinic Volume</div>
-      <div id="clinic-chart"></div>
     </div>
 
     <div class="table-section">
@@ -119,7 +108,7 @@
         <span id="tcount" style="font-size:11px; color:var(--muted);"></span>
       </div>
       <table>
-        <thead><tr><th>#</th><th>Clinic</th><th>Status</th><th>Date</th><th>Problem</th></tr></thead>
+        <thead><tr><th>#</th><th>Clinic</th><th>Status</th><th>Resolution Time</th><th>Problem</th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
@@ -127,7 +116,13 @@
 </div>
 
 <script>
+// ══════════════════════════════════════════
+// ⚙️  CONFIG
+// ══════════════════════════════════════════
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjKYbJDYGnxVctc20i5d2NdYijCLHWWEqE8LzHS7yRdGRP8GHioFcWfg6X7ai36xLR/exec";
+const ENGINEER_NAME = "Bernard";
+// ══════════════════════════════════════════
+
 let allData = [];
 let personalTickets = [];
 let activeFilter = null;
@@ -140,19 +135,26 @@ async function loadData() {
   try {
     const res = await fetch(SCRIPT_URL + "?t=" + Date.now());
     allData = await res.json();
-    // Filter specifically for Bernard
-    personalTickets = allData.filter(r => (r['Name'] || '').trim() === "Bernard");
+    personalTickets = allData.filter(r => (r['Name'] || '').trim() === ENGINEER_NAME);
     
     document.getElementById('loading').style.display = 'none';
     document.getElementById('content').style.display = 'block';
     
     updateStats();
-    updateChart();
     renderTable(personalTickets);
-  } catch(e) {
-    console.error(e);
-  }
+  } catch(e) { console.error(e); }
   btn.classList.remove('spinning');
+}
+
+function calculateDuration(start, end) {
+  const s = new Date(start);
+  const e = end ? new Date(end) : new Date();
+  if (isNaN(s.getTime())) return '-';
+  const diffMs = e - s;
+  const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHrs / 24);
+  if (diffDays > 0) return `${diffDays}d ${diffHrs % 24}h`;
+  return `${diffHrs}h`;
 }
 
 function updateStats() {
@@ -192,35 +194,21 @@ function filterTable(status, element) {
 }
 
 function renderTable(data) {
-  document.getElementById('tcount').textContent = data.length + ' visible';
+  document.getElementById('tcount').textContent = data.length + ' tickets';
   const tbody = document.getElementById('tbody');
   tbody.innerHTML = data.map((r,i) => {
     const s = r['Current Status'] || 'New';
     const bc = s.toLowerCase()==='closed'?'badge-closed':s.toLowerCase()==='new'?'badge-new':s.toLowerCase()==='in progress'?'badge-inprogress':'badge-waiting';
+    const startTime = r['Timestamp'] || r['Request Date'];
+    const dur = calculateDuration(startTime, r['Closing Date']);
     return `<tr>
       <td style="color:var(--muted)">${i+1}</td>
       <td>${r['Customer/Account Name'] || '-'}</td>
       <td><span class="status-badge ${bc}">${s}</span></td>
-      <td style="color:var(--muted)">${r['Request Date'] || '-'}</td>
+      <td><span class="time-text">${dur}</span></td>
       <td style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r['Problem Description'] || '-'}</td>
     </tr>`;
   }).join('');
-}
-
-function updateChart() {
-  const clinics = {};
-  personalTickets.forEach(r => {
-    const c = r['Customer/Account Name'] || 'Unknown';
-    clinics[c] = (clinics[c]||0)+1;
-  });
-  const sorted = Object.entries(clinics).sort((a,b)=>b[1]-a[1]);
-  const max = sorted[0]?.[1]||1;
-  document.getElementById('clinic-chart').innerHTML = sorted.map(([name, count]) => `
-    <div class="bar-row">
-      <div class="bar-label">${name}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${(count/max*100)}%"></div></div>
-      <div class="bar-count">${count}</div>
-    </div>`).join('');
 }
 
 function animNum(id, target) {
