@@ -35,13 +35,13 @@
   .eng-tabs { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:28px; }
   .eng-tab { background:var(--surface); border:1px solid var(--border); border-radius:100px; padding:10px 20px; cursor:pointer; font-family:'Syne',sans-serif; font-size:13px; font-weight:700; color:var(--muted); border:none; }
   
-  /* Adjusted grid to 3 columns since Closed is hidden */
   .stats-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:28px; }
   @media(max-width:700px){ .stats-grid { grid-template-columns:1fr; } }
   
-  .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; position:relative; cursor:pointer; transition:all 0.2s; }
+  .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; position:relative; cursor:pointer; transition:all 0.2s; opacity: 0.5; }
   .stat-card:hover { transform:translateY(-2px); background:var(--surface2); }
-  .stat-card.active-slice { border: 1px solid white; }
+  /* When active, opacity is full and we show a border */
+  .stat-card.active-slice { border: 1px solid white; opacity: 1; transform: scale(1.02); }
   .stat-card::after { content:''; position:absolute; bottom:0; left:0; right:0; height:2px; }
   .stat-card.open::after { background:var(--open); }
   .stat-card.inprogress::after { background:var(--inprogress); }
@@ -68,7 +68,7 @@
   <header>
     <div class="logo-area">
       <h1>Active <span>Tickets</span></h1>
-      <p>Pending Tasks Dashboard</p>
+      <p>Multi-Filter Command Center</p>
     </div>
     <button class="refresh-btn" onclick="loadData()" id="rbtn"><span>↻</span> Refresh</button>
   </header>
@@ -80,184 +80,13 @@
     <div class="overview-grid" id="overview-grid"></div>
     <div class="eng-tabs" id="eng-tabs"></div>
 
-    <div style="font-family:Syne; font-size:20px; font-weight:800; margin-bottom:20px; color:var(--accent);" id="view-title">All Staff</div>
+    <div style="font-family:Syne; font-size:20px; font-weight:800; margin-bottom:10px; color:var(--accent);" id="view-title">All Staff</div>
+    <p style="font-size: 10px; color: var(--muted); margin-bottom: 20px;">TIP: Select multiple statuses to combine filters.</p>
 
     <div class="stats-grid">
-      <div class="stat-card open" onclick="toggleSlice('New', this)">
+      <div class="stat-card open active-slice" id="btn-New" onclick="toggleSlice('New')">
         <div style="font-size:10px; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">New / Open</div>
         <div class="stat-value" style="color:var(--open)" id="count-open">0</div>
       </div>
-      <div class="stat-card inprogress" onclick="toggleSlice('In Progress', this)">
-        <div style="font-size:10px; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">Working</div>
-        <div class="stat-value" style="color:var(--inprogress)" id="count-inprogress">0</div>
-      </div>
-      <div class="stat-card waiting" onclick="toggleSlice('Waiting', this)">
-        <div style="font-size:10px; color:var(--muted); text-transform:uppercase; margin-bottom:10px;">Pending</div>
-        <div class="stat-value" style="color:var(--waiting)" id="count-waiting">0</div>
-      </div>
-    </div>
-
-    <div class="table-section">
-      <div style="padding:15px 20px; background:var(--surface2); font-size:11px; color:var(--muted); border-bottom:1px solid var(--border);" id="table-info"></div>
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Name</th>
-            <th>Clinic</th>
-            <th>Status</th>
-            <th>Ticket Age</th>
-            <th>Problem Description</th>
-          </tr>
-        </thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjKYbJDYGnxVctc20i5d2NdYijCLHWWEqE8LzHS7yRdGRP8GHioFcWfg6X7ai36xLR/exec";
-const ENGINEERS = [
-  {name:"Shakeel", color:"#4d9fff"}, {name:"Sam", color:"#00e5a0"},
-  {name:"Bernard", color:"#f0b429"}, {name:"Ghulam", color:"#ff6b35"},
-  {name:"Ahmad", color:"#a855f7"}
-];
-
-let allData = [];
-let currentEngineer = 'all';
-let currentStatusSlice = null;
-
-window.onload = () => loadData();
-
-async function loadData() {
-  const btn = document.getElementById('rbtn');
-  btn.classList.add('spinning');
-  try {
-    const res = await fetch(SCRIPT_URL + "?t=" + Date.now());
-    const rawData = await res.json();
-    
-    // GLOBAL FILTER: Only keep tickets that are NOT "Closed"
-    allData = rawData.filter(r => (r['Current Status'] || '').toLowerCase() !== 'closed');
-    
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('content').style.display = 'block';
-    refreshUI();
-  } catch(e) { console.error(e); }
-  btn.classList.remove('spinning');
-}
-
-function refreshUI() {
-  renderOverview();
-  renderTabs();
-  updateStats();
-  renderTable();
-}
-
-function getField(row, ...keys) {
-  for(const k of keys){ if(row[k]) return row[k]; }
-  return '';
-}
-
-function calculateDuration(start, end) {
-  const s = new Date(start);
-  const e = end ? new Date(end) : new Date();
-  if (isNaN(s.getTime())) return '-';
-  
-  const diffMs = e - s;
-  const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffHrs / 24);
-  
-  if (diffDays > 0) return `${diffDays}d ${diffHrs % 24}h`;
-  return `${diffHrs}h`;
-}
-
-function renderOverview() {
-  const grid = document.getElementById('overview-grid');
-  grid.innerHTML = ENGINEERS.map(eng => {
-    const t = allData.filter(r => (r['Name']||'').trim() === eng.name);
-    return `<div class="eng-card" onclick="selectEng('${eng.name}')">
-      <div class="eng-card-name" style="color:${eng.color}">${eng.name}</div>
-      <div style="font-size:11px; color:var(--muted)">${t.length} Active</div>
-      <div style="position:absolute; bottom:0; left:0; right:0; height:3px; background:${eng.color}"></div>
-    </div>`;
-  }).join('');
-}
-
-function renderTabs() {
-  const tabs = document.getElementById('eng-tabs');
-  const items = [{name:'All', key:'all', color:'var(--accent)'}, ...ENGINEERS.map(e=>({name:e.name, key:e.name, color:e.color}))];
-  tabs.innerHTML = items.map(e => `
-    <button class="eng-tab" onclick="selectEng('${e.key}')" 
-      style="${currentEngineer===e.key ? `background:${e.color}; color:#000; opacity:1;` : `opacity:0.6;` }">
-      ${e.name}
-    </button>`).join('');
-}
-
-function selectEng(key) {
-  currentEngineer = key;
-  currentStatusSlice = null;
-  document.getElementById('view-title').innerText = key === 'all' ? "All Staff" : key;
-  refreshUI();
-}
-
-function updateStats() {
-  const tickets = currentEngineer === 'all' ? allData : allData.filter(r => (r['Name']||'').trim() === currentEngineer);
-  const c = {open:0, inprogress:0, waiting:0};
-  
-  tickets.forEach(r => {
-    const s = (r['Current Status'] || '').toLowerCase();
-    if(s==='new') c.open++;
-    else if(s==='in progress') c.inprogress++;
-    else if(s.includes('waiting')) c.waiting++;
-  });
-  
-  document.getElementById('count-open').innerText = c.open;
-  document.getElementById('count-inprogress').innerText = c.inprogress;
-  document.getElementById('count-waiting').innerText = c.waiting;
-}
-
-function toggleSlice(status, el) {
-  if (currentStatusSlice === status) {
-    currentStatusSlice = null;
-    el.classList.remove('active-slice');
-  } else {
-    document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active-slice'));
-    currentStatusSlice = status;
-    el.classList.add('active-slice');
-  }
-  renderTable();
-}
-
-function renderTable() {
-  let tickets = currentEngineer === 'all' ? allData : allData.filter(r => (r['Name']||'').trim() === currentEngineer);
-  
-  if (currentStatusSlice) {
-    tickets = tickets.filter(r => {
-      const s = (r['Current Status'] || '').toLowerCase();
-      if (currentStatusSlice === 'Waiting') return s.includes('waiting');
-      return s === currentStatusSlice.toLowerCase();
-    });
-  }
-
-  const tbody = document.getElementById('tbody');
-  tbody.innerHTML = tickets.map((r, i) => {
-    const s = r['Current Status'] || 'New';
-    const bc = s.toLowerCase()==='new'?'badge-new':s.toLowerCase()==='in progress'?'badge-inprogress':'badge-waiting';
-    
-    const startTime = getField(r, 'Timestamp', 'Request Date');
-    const duration = calculateDuration(startTime, null);
-
-    return `<tr>
-      <td>${i+1}</td>
-      <td style="font-weight:700;">${r['Name'] || '-'}</td>
-      <td>${r['Customer/Account Name'] || '-'}</td>
-      <td><span class="status-badge ${bc}">${s}</span></td>
-      <td><span class="time-text">${duration}</span></td>
-      <td style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r['Problem Description'] || '-'}</td>
-    </tr>`;
-  }).join('');
-}
-</script>
-</body>
-</html>
+      <div class="stat-card inprogress active-slice" id="btn-In Progress" onclick="toggleSlice('In Progress')">
+        <div style="font-size:10px; color
